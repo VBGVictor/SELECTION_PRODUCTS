@@ -1,0 +1,26 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <title>Verificação do DataFrame Processado</title>
+    <style>
+        body { font-family: sans-serif; margin: 2em; }
+        table.data { border-collapse: collapse; width: 100%; }
+        table.data th, table.data td { padding: 8px; border: 1px solid #ccc; text-align: left;}
+        table.data th { background-color: #f2f2f2; }
+        .success { color: #2e7d32; }
+        .error { color: #d32f2f; }
+    </style>
+</head>
+<body>
+    <h1>Verificação do DataFrame Processado</h1>
+    {% if table %}
+        <h2 class="success">Sucesso! Os dados foram extraídos e processados.</h2>
+        <p>Por favor, verifique a tabela abaixo. Estes são os dados que serão usados para gerar o relatório.</p>
+        {{ table|safe }}
+    {% else %}
+        <h2 class="error">Nenhum dado foi extraído.</h2>
+        <p>A lógica de extração não encontrou nenhum registro que corresponda ao padrão esperado no arquivo.</p>
+    {% endif %}
+</body>
+</html>

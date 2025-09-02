@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <title>Resultados do Relatório - Ethimos Investimentos</title>
+    <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;700&display=swap" rel="stylesheet">
+    <style>
+        body { font-family: 'Montserrat', sans-serif; margin: 0; background-color: #f4f7fc; }
+        .header { background: linear-gradient(90deg, #ffffff 60%, #e0e8f9 100%); padding: 15px 40px; display: flex; align-items: center; border-bottom: 1px solid #dee2e6; }
+        .header img { max-height: 45px; }
+        .container { max-width: 1400px; margin: 30px auto; padding: 0 30px; }
+        .card { background-color: white; padding: 30px; border-radius: 15px; box-shadow: 0 8px 30px rgba(0,0,0,0.05); margin-bottom: 30px; }
+        h2 { font-size: 1.5em; color: #002060; font-weight: 700; }
+        h3 { color: #0033a0; font-weight: 600; font-size: 1.2em; margin-top: 20px; }
+        .results-header { display: flex; justify-content: space-between; align-items: center; }
+        .download-options { display: flex; gap: 10px; }
+        .btn { padding: 12px 25px; border-radius: 8px; text-decoration: none; color: white; font-size: 16px; font-weight: bold; transition: all 0.3s ease;}
+        .download-btn { background-color: #16a34a; }
+        .download-excel-btn { background-color: #15803d; }
+        .back-btn { background-color: #6c757d; }
+        .results-table { width: 100%; border-collapse: separate; border-spacing: 0; background-color: #fff; box-shadow: 0 5px 20px rgba(0,0,0,0.05); border-radius: 10px; overflow: hidden; margin-top: 15px;}
+        .results-table th, .results-table td { padding: 15px; text-align: left; }
+        .results-table th { background-color: #f8f9fa; color: #343a40; font-weight: 600; }
+    </style>
+</head>
+<body>
+    <div class="header"><img src="/static/logo.png" alt="Logo Ethimos Investimentos"></div>
+    <div class="container">
+        <div class="card">
+            <div class="results-header">
+                <h2>Resultados Filtrados ({{ 'Assessores' if is_advisor else 'Clientes' }})</h2>
+                <div class="download-options">
+                    <a href="/download/pdf?{{ download_url_params }}" class="btn download-btn">Baixar PDF</a>
+                    {% if is_advisor %}
+                    <a href="/download/excel?{{ download_url_params }}" class="btn download-excel-btn">Baixar Excel</a>
+                    {% endif %}
+                </div>
+            </div>
+            {% if data is not none and not data.empty %}
+                {% set liquidez_diaria_assets = data[data.Liquidez_Diaria == True] %}
+                {% set prazo_assets = data[data.Liquidez_Diaria == False] %}
+                {% if not liquidez_diaria_assets.empty %}
+                    <h3>Ativos com Liquidez Diária</h3>
+                    <table class="results-table">
+                        <thead><tr><th>Produto</th><th>Emissor</th><th>Vencimento</th><th>Taxa</th><th>Aplicação Mínima</th>{% if is_advisor %}<th>ROA (%)</th>{% endif %}</tr></thead>
+                        <tbody>
+                            {% for row in liquidez_diaria_assets.itertuples() %}
+                            <tr>
+                                <td>{{ row.Produto }}</td><td>{{ row.Emissor_Display }}</td><td>{{ row.Vencimento.strftime('%d/%m/%Y') }}</td>
+                                <td>{{ row.Taxa_str }}</td><td>R$ {{ "%.2f"|format(row.Aplicacao_Minima) if row.Aplicacao_Minima == row.Aplicacao_Minima else "" }}</td>
+                                {% if is_advisor %}<td>{{ "%.2f%%"|format(row.Roa * 100) if row.Roa == row.Roa else "" }}</td>{% endif %}
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                {% endif %}
+                {% if not prazo_assets.empty %}
+                     {% for year, group in prazo_assets.groupby('Ano_Vencimento') %}
+                        <h3>Ano de Vencimento: {{ year }}</h3>
+                        <table class="results-table">
+                           <thead><tr><th>Produto</th><th>Emissor</th><th>Vencimento</th><th>Taxa</th><th>Aplicação Mínima</th>{% if is_advisor %}<th>ROA (%)</th>{% endif %}</tr></thead>
+                           <tbody>
+                            {% for row in group.itertuples() %}
+                            <tr>
+                                <td>{{ row.Produto }}</td><td>{{ row.Emissor_Display }}</td><td>{{ row.Vencimento.strftime('%d/%m/%Y') }}</td>
+                                <td>{{ row.Taxa_str }}</td><td>R$ {{ "%.2f"|format(row.Aplicacao_Minima) if row.Aplicacao_Minima == row.Aplicacao_Minima else "" }}</td>
+                                {% if is_advisor %}<td>{{ "%.2f%%"|format(row.Roa * 100) if row.Roa == row.Roa else "" }}</td>{% endif %}
+                            </tr>
+                            {% endfor %}
+                           </tbody>
+                        </table>
+                    {% endfor %}
+                {% endif %}
+            {% else %}
+                <p>Nenhum ativo encontrado com os filtros selecionados.</p>
+            {% endif %}
+        </div>
+        <a href="{{ url_for('main.index') }}" class="btn back-btn" style="display: block; width: 200px; margin: 20px auto; text-align: center;">Voltar aos Filtros</a>
+    </div>
+</body>
+</html>
