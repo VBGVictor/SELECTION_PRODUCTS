@@ -11,6 +11,7 @@ main_bp = Blueprint('main', __name__)
 def get_base_path():
     return os.path.dirname(os.path.abspath(__file__))
 
+# Cache simples para performance
 _cached_data = None
 def get_processed_data():
     global _cached_data
@@ -84,14 +85,12 @@ def show_results():
         return render_template('results.html', 
                                data=analysis_result, 
                                is_advisor=is_advisor_report,
-                               report_type=report_type,
                                download_url_params=request.query_string.decode('utf-8'))
     except Exception as e:
         return f"<h1>Ocorreu um erro ao gerar a visualização:</h1><p>{str(e)}</p>", 500
 
 @main_bp.route('/download/<file_format>', methods=['GET'])
 def download_file(file_format):
-    """Gera e retorna o PDF ou Excel."""
     try:
         df = get_processed_data()
         df_filtrado = filter_dataframe(df, request.args)

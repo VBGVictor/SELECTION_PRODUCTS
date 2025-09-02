@@ -61,8 +61,7 @@ def process_data(file_path: str):
         if row['Liquidez_Diaria']:
             prazo_str = str(row['Prazo_str'])
             details_match = re.search(r'\(.*?\)|Carência.*|D\+\d+', prazo_str, re.IGNORECASE)
-            detail = ""
-            if details_match: detail = details_match.group(0).strip()
+            detail = details_match.group(0).strip() if details_match else ''
             if detail and detail.lower() not in ['diaria', 'diária']:
                  row['Emissor_Display'] = f"{row['Emissor']} ({detail})"
         return row

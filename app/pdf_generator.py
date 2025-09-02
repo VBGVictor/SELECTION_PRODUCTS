@@ -73,9 +73,5 @@ def create_pdf_report(data: pd.DataFrame, include_roa: bool, logo_path: str):
             pdf.ln(5); pdf.set_font("Arial", "B", 14); pdf.set_text_color(*ethimos_blue_dark)
             pdf.cell(0, 12, f"Ano de Vencimento: {int(year)}", 0, 1, "L"); pdf.ln(2)
             render_table(group, include_roa)
-            
-def safe_str(value: str) -> str:
-    if pd.isna(value):
-        return ""
-    
-    return str(value).encode("latin-1", "replace").decode("latin-1")
+
+    return pdf.output(dest="S").encode("latin-1")
