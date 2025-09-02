@@ -36,9 +36,26 @@
                     {% endif %}
                 </div>
             </div>
-            {% if data is not none and not data.empty %}
-                {% set liquidez_diaria_assets = data[data.Liquidez_Diaria == True] %}
-                {% set prazo_assets = data[data.Liquidez_Diaria == False] %}
+
+            {% if liquidez_imediata_assets.empty and liquidez_diaria_assets.empty and prazo_assets.empty %}
+                <p>Nenhum ativo encontrado com os filtros selecionados.</p>
+            {% else %}
+                {% if not liquidez_imediata_assets.empty %}
+                    <h3>Liquidez Imediata (sem carência)</h3>
+                    <table class="results-table">
+                        <thead><tr><th>Produto</th><th>Emissor</th><th>Vencimento</th><th>Taxa</th><th>Aplicação Mínima</th>{% if is_advisor %}<th>ROA (%)</th>{% endif %}</tr></thead>
+                        <tbody>
+                            {% for row in liquidez_imediata_assets.itertuples() %}
+                            <tr>
+                                <td>{{ row.Produto }}</td><td>{{ row.Emissor_Display }}</td><td>{{ row.Vencimento.strftime('%d/%m/%Y') }}</td>
+                                <td>{{ row.Taxa_str }}</td><td>R$ {{ "%.2f"|format(row.Aplicacao_Minima) if row.Aplicacao_Minima == row.Aplicacao_Minima else "" }}</td>
+                                {% if is_advisor %}<td>{{ "%.2f%%"|format(row.Roa * 100) if row.Roa == row.Roa else "" }}</td>{% endif %}
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                {% endif %}
+
                 {% if not liquidez_diaria_assets.empty %}
                     <h3>Ativos com Liquidez Diária</h3>
                     <table class="results-table">
@@ -54,6 +71,7 @@
                         </tbody>
                     </table>
                 {% endif %}
+
                 {% if not prazo_assets.empty %}
                      {% for year, group in prazo_assets.groupby('Ano_Vencimento') %}
                         <h3>Ano de Vencimento: {{ year }}</h3>
@@ -71,8 +89,6 @@
                         </table>
                     {% endfor %}
                 {% endif %}
-            {% else %}
-                <p>Nenhum ativo encontrado com os filtros selecionados.</p>
             {% endif %}
         </div>
         <a href="{{ url_for('main.index') }}" class="btn back-btn" style="display: block; width: 200px; margin: 20px auto; text-align: center;">Voltar aos Filtros</a>

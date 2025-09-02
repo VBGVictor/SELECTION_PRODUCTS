@@ -82,8 +82,15 @@ def show_results():
         top_n = 8 if is_advisor_report else 5
         analysis_result = find_best_assets(df_filtrado, top_n=top_n)
 
+        # A lógica de filtragem foi movida para cá
+        liquidez_imediata_assets = analysis_result[analysis_result['Sem_Carencia'] == True]
+        liquidez_diaria_assets = analysis_result[(analysis_result['Liquidez_Diaria'] == True) & (analysis_result['Sem_Carencia'] == False)]
+        prazo_assets = analysis_result[analysis_result['Liquidez_Diaria'] == False]
+
         return render_template('results.html', 
-                               data=analysis_result, 
+                               liquidez_imediata_assets=liquidez_imediata_assets,
+                               liquidez_diaria_assets=liquidez_diaria_assets,
+                               prazo_assets=prazo_assets,
                                is_advisor=is_advisor_report,
                                download_url_params=request.query_string.decode('utf-8'))
     except Exception as e:

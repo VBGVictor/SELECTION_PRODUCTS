@@ -49,23 +49,48 @@ def process_data(file_path: str):
         for full, abbr in abbreviations.items():
             if full in emissor: emissor = emissor.replace(full, abbr)
         return produto_limpo, emissor
+        
     df[['Produto', 'Emissor']] = df['Produto_Completo'].apply(lambda x: pd.Series(extract_product_and_issuer(x)))
     
-    def identify_liquidez_diaria(prazo_str):
-        s = str(prazo_str).lower()
-        return 'diaria' in s or 'diária' in s or 'd+' in s
-    df['Liquidez_Diaria'] = df['Prazo_str'].apply(identify_liquidez_diaria)
+    def clean_issuer_name(row):
+        base_issuers = ['BTG Pactual', 'Agibank', 'BDMG', 'genial', 'XP', 'Daycoval', 'C6', 'Bmg', 'FIBRA', 'Haitong', 'Master', 'Omni', 'Pine', 'Rodobens', 'Voiter', 'Digimais', 'Facta']
+        current_issuer = str(row['Emissor'])
+        for issuer in base_issuers:
+            if issuer in current_issuer:
+                return issuer
+        return current_issuer
+        
+    df['Emissor'] = df.apply(clean_issuer_name, axis=1)
+
+    def identify_liquidez_diaria(row):
+        prazo_str = str(row['Prazo_str']).lower()
+        produto_str = str(row['Produto_Completo']).lower()
+        liquidity_keywords = ['diaria', 'diária', 'd+']
+        if any(keyword in prazo_str for keyword in liquidity_keywords) or \
+           any(keyword in produto_str for keyword in liquidity_keywords) or \
+           re.search(r'\sS$', str(row['Prazo_str']).strip()):
+            return True
+        return False
+
+    df['Liquidez_Diaria'] = df.apply(identify_liquidez_diaria, axis=1)
+
+    def identify_sem_carencia(row):
+        if not row['Liquidez_Diaria']:
+            return False
+        
+        prazo_str = str(row['Prazo_str']).lower()
+        produto_str = str(row['Produto_Completo']).lower()
+        carencia_keywords = ['carência', 'carencia', r'd\+']
+        
+        if any(re.search(keyword, prazo_str) for keyword in carencia_keywords) or \
+           any(re.search(keyword, produto_str) for keyword in carencia_keywords):
+            return False
+            
+        return True
+
+    df['Sem_Carencia'] = df.apply(identify_sem_carencia, axis=1)
     
     df['Emissor_Display'] = df['Emissor']
-    def add_liquidez_details(row):
-        if row['Liquidez_Diaria']:
-            prazo_str = str(row['Prazo_str'])
-            details_match = re.search(r'\(.*?\)|Carência.*|D\+\d+', prazo_str, re.IGNORECASE)
-            detail = details_match.group(0).strip() if details_match else ''
-            if detail and detail.lower() not in ['diaria', 'diária']:
-                 row['Emissor_Display'] = f"{row['Emissor']} ({detail})"
-        return row
-    df = df.apply(add_liquidez_details, axis=1)
 
     df["Vencimento"] = pd.to_datetime(df["Vencimento"], errors="coerce")
     df.dropna(subset=["Vencimento", "Produto"], inplace=True)
@@ -77,6 +102,7 @@ def process_data(file_path: str):
         if '% a.a.' in s: return 'Pré-fixado'
         return 'Outros'
     df['Tipo_Taxa'] = df['Taxa_str'].apply(classify_rate_type)
+    
     def classify_product_type(produto_str):
         s = str(produto_str).upper();
         for p_type in ['LCA', 'LCI', 'CDB', 'CRA', 'CRI', 'LF']:
