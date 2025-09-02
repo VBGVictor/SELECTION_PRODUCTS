@@ -1,4 +1,4 @@
-from flask import Blueprint, render_template, make_response, request, redirect, url_for, Response
+from flask import Blueprint, render_template, make_response, request, redirect, url_for, Response, flash
 from .data_processor import process_data
 from .analysis import find_best_assets
 from .pdf_generator import create_pdf_report
@@ -13,11 +13,22 @@ def get_base_path():
 
 # Cache simples para performance
 _cached_data = None
+
+def get_project_root():
+    return os.path.dirname(get_base_path())
+
+def get_data_path():
+    return os.path.join(get_project_root(), 'data', 'credito bancario.xlsx')
+
+def clear_data_cache():
+    """Limpa o cache de dados para forçar a releitura do arquivo."""
+    global _cached_data
+    _cached_data = None
+    
 def get_processed_data():
     global _cached_data
     if _cached_data is None:
-        project_root = os.path.dirname(get_base_path())
-        file_path = os.path.join(project_root, 'data', 'credito bancario.xlsx')
+        file_path = get_data_path()
         _cached_data = process_data(file_path)
     return _cached_data
 
@@ -37,6 +48,33 @@ def index():
         return render_template('index.html', anos=anos, tipos_produto=tipos_produto, tipos_taxa=tipos_taxa, emissores=emissores)
     except Exception as e:
         return render_template('index.html', error=f"Erro crítico ao carregar a página: {e}")
+
+@main_bp.route('/update-data', methods=['POST'])
+def update_data():
+    """Recebe um novo arquivo de dados, substitui o antigo e limpa o cache."""
+    if 'new_data_file' not in request.files:
+        flash('Nenhum arquivo selecionado.', 'error')
+        return redirect(url_for('main.index'))
+
+    file = request.files['new_data_file']
+
+    if file.filename == '':
+        flash('Nenhum arquivo selecionado.', 'error')
+        return redirect(url_for('main.index'))
+
+    if file and file.filename.endswith('.xlsx'):
+        try:
+            file_path = get_data_path()
+            file.save(file_path)
+            clear_data_cache()  # Limpa o cache para que os novos dados sejam lidos
+            flash('Dados atualizados com sucesso!', 'success')
+        except Exception as e:
+            flash(f'Ocorreu um erro ao salvar o arquivo: {e}', 'error')
+    else:
+        flash('Formato de arquivo inválido. Por favor, envie um arquivo .xlsx.', 'error')
+
+    return redirect(url_for('main.index'))
+
 
 @main_bp.route('/process-filters', methods=['POST'])
 def process_filters():
