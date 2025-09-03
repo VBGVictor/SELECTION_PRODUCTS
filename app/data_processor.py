@@ -1,21 +1,87 @@
 import pandas as pd
 import re
 
+def find_header_row(df):
+    """
+    Analisa as primeiras 10 linhas de um DataFrame para encontrar a linha do cabeçalho,
+    procurando por colunas-chave.
+    """
+    # Lista de possíveis nomes para colunas essenciais (já normalizados)
+    possible_headers = ['produto', 'risco', 'taxa', 'prazo', 'vencimento']
+    
+    for i, row in df.head(10).iterrows():
+        try:
+            # Normaliza os valores da linha para a busca (minúsculas, sem espaços)
+            normalized_row = [re.sub(r'[^a-z0-9]', '', str(cell).lower()) for cell in row]
+            
+            # Conta quantas colunas essenciais estão presentes na linha
+            matches = sum(1 for header in possible_headers if any(header in cell for cell in normalized_row))
+            
+            # Se encontrarmos pelo menos 3 colunas-chave, consideramos que é o cabeçalho
+            if matches >= 3:
+                return i
+        except:
+            continue
+            
+    return None
+
+def extract_product_and_issuer(full_product):
+    if not isinstance(full_product, str):
+        return 'N/A', 'N/A'
+
+    issuer_keywords = ['Banco', 'Agibank', 'BDMG', 'genial', 'XP', 'BTG', 'Daycoval', 'C6', 'Bmg', 'FIBRA', 'Haitong', 'Master', 'Omni', 'Pine', 'Rodobens', 'Voiter', 'Digimais', 'Facta', 'Agrolend']
+    pattern = r'\s?(' + '|'.join(issuer_keywords) + r'.*)'
+    match = re.search(pattern, full_product, re.IGNORECASE)
+    
+    produto_limpo = full_product.replace('No vencimento', '').strip()
+    emissor = 'N/A'
+    
+    if match:
+        split_index = match.start()
+        produto_limpo = full_product[:split_index].strip()
+        emissor = full_product[split_index:].replace('No vencimento', '').strip()
+        if produto_limpo.endswith(('-', '–')):
+            produto_limpo = produto_limpo[:-1].strip()
+    
+    abbreviations = {"Banco BTG Pactual": "BTG Pactual", "Banco Daycoval": "Daycoval", "Banco C6 Consignado": "C6", "Banco BMG": "BMG", "Banco Agibank": "Agibank"}
+    for full, abbr in abbreviations.items():
+        if full in emissor:
+            emissor = emissor.replace(full, abbr)
+            
+    emissor = re.sub(r'Diária.*', '', emissor).strip()
+    return produto_limpo, emissor
+
 def process_data(file_path: str):
     try:
-        df_raw = pd.read_excel(file_path, header=2, dtype=str)
+        # **INÍCIO DA CORREÇÃO**
+        # 1. Lê o arquivo sem assumir um cabeçalho para poder encontrá-lo
+        df_temp = pd.read_excel(file_path, header=None, dtype=str)
+        
+        # 2. Encontra a linha correta do cabeçalho dinamicamente
+        header_row_index = find_header_row(df_temp)
+        
+        if header_row_index is None:
+            raise ValueError("Não foi possível encontrar o cabeçalho da tabela. Verifique se o arquivo Excel contém colunas como 'Produto', 'Taxa', etc., nas primeiras 10 linhas.")
+
+        # 3. Lê o arquivo novamente, desta vez usando a linha de cabeçalho correta
+        df_raw = pd.read_excel(file_path, header=header_row_index, dtype=str)
+        # **FIM DA CORREÇÃO**
+
     except Exception as e:
-        raise ValueError(f"Não foi possível ler o arquivo Excel: {e}")
+        raise ValueError(f"Erro ao processar o arquivo Excel: {e}")
 
     df_raw.dropna(how='all', axis=1, inplace=True)
     clean_columns = {col: re.sub(r'[^A-Za-z0-9]+', '', str(col).lower()) for col in df_raw.columns}
     df_raw.rename(columns=clean_columns, inplace=True)
 
+    if 'produto' not in df_raw.columns:
+        raise ValueError("A coluna 'Produto' é obrigatória e não foi encontrada após a limpeza dos cabeçalhos. Verifique o seu arquivo Excel.")
+
     vencimento_col_clean = 'prazovencimento'
     records = []
     for i, row in df_raw.iterrows():
         produto_completo = row.get('produto')
-        if pd.notna(produto_completo) and produto_completo.strip() != '' and 'risco' not in produto_completo.lower():
+        if pd.notna(produto_completo) and produto_completo.strip() != '' and 'risco' not in str(produto_completo).lower():
             if i + 1 < len(df_raw):
                 next_row = df_raw.iloc[i+1]
                 vencimento = next_row.get(vencimento_col_clean)
@@ -29,39 +95,12 @@ def process_data(file_path: str):
                         "Roa": row.get('roa')
                     })
 
-    if not records: return pd.DataFrame()
+    if not records: 
+        return pd.DataFrame()
+        
     df = pd.DataFrame(records)
-
-    def extract_product_and_issuer(full_product):
-        issuer_keywords = ['Banco', 'Agibank', 'BDMG', 'genial', 'XP', 'BTG', 'Daycoval', 'C6', 'Bmg', 'FIBRA', 'Haitong', 'Master', 'Omni', 'Pine', 'Rodobens', 'Voiter', 'Digimais', 'Facta']
-        pattern = r'\s?(' + '|'.join(issuer_keywords) + r'.*)'
-        match = re.search(pattern, full_product, re.IGNORECASE)
-        
-        produto_limpo = full_product.replace('No vencimento', '').strip()
-        emissor = 'N/A'
-        if match:
-            split_index = match.start()
-            produto_limpo = full_product[:split_index].strip()
-            emissor = full_product[split_index:].replace('No vencimento', '').strip()
-            if produto_limpo.endswith(('-', '–')): produto_limpo = produto_limpo[:-1].strip()
-        
-        abbreviations = {"Banco BTG Pactual": "BTG Pactual", "Banco Daycoval": "Daycoval", "Banco C6 Consignado": "C6", "Banco BMG": "BMG", "Banco Agibank": "Agibank"}
-        for full, abbr in abbreviations.items():
-            if full in emissor: emissor = emissor.replace(full, abbr)
-        return produto_limpo, emissor
-        
     df[['Produto', 'Emissor']] = df['Produto_Completo'].apply(lambda x: pd.Series(extract_product_and_issuer(x)))
     
-    def clean_issuer_name(row):
-        base_issuers = ['BTG Pactual', 'Agibank', 'BDMG', 'genial', 'XP', 'Daycoval', 'C6', 'Bmg', 'FIBRA', 'Haitong', 'Master', 'Omni', 'Pine', 'Rodobens', 'Voiter', 'Digimais', 'Facta']
-        current_issuer = str(row['Emissor'])
-        for issuer in base_issuers:
-            if issuer in current_issuer:
-                return issuer
-        return current_issuer
-        
-    df['Emissor'] = df.apply(clean_issuer_name, axis=1)
-
     def identify_liquidez_diaria(row):
         prazo_str = str(row['Prazo_str']).lower()
         produto_str = str(row['Produto_Completo']).lower()
