@@ -1,20 +1,28 @@
 import pandas as pd
 
 def find_best_assets(df: pd.DataFrame, top_n: int = 5) -> pd.DataFrame:
+    """
+    Recebe um DataFrame JÁ FILTRADO, limpa os dados inválidos e encontra os melhores ativos.
+    """
     if df.empty:
         return df
     
-    # Prioriza os ativos sem carência, depois por liquidez diária e por fim pela taxa
-    df_sorted = df.sort_values(by=['Sem_Carencia', 'Liquidez_Diaria', 'Taxa'], ascending=[False, False, False])
+    # **INÍCIO DA CORREÇÃO**
+    # Pré-limpeza: Remove quaisquer linhas onde a 'Taxa' não pôde ser convertida para número.
+    # Isso evita o erro 'must be real number, not NoneType'.
+    df_cleaned = df.dropna(subset=['Taxa'])
+    # **FIM DA CORREÇÃO**
     
-    # Captura os 'top_n' para cada categoria
-    immediate_liquidity_assets = df_sorted[df_sorted['Sem_Carencia']].head(top_n)
-    daily_liquidity_assets = df_sorted[df_sorted['Liquidez_Diaria'] & ~df_sorted['Sem_Carencia']].head(top_n)
-    term_assets = df_sorted[~df_sorted['Liquidez_Diaria']].groupby('Ano_Vencimento').head(top_n)
+    # A análise agora usa o DataFrame limpo (df_cleaned)
+    df_sorted = df_cleaned.sort_values(by='Taxa', ascending=False)
     
-    # Concatena os resultados e remove duplicatas, caso um ativo se encaixe em mais de uma categoria
-    analysis_result = pd.concat([immediate_liquidity_assets, daily_liquidity_assets, term_assets]).drop_duplicates().sort_values(
-        by=['Sem_Carencia', 'Liquidez_Diaria', 'Ano_Vencimento', 'Taxa'], 
-        ascending=[False, False, True, False]
+    daily_assets = df_sorted[df_sorted['Liquidez_Diaria']].head(top_n)
+    
+    term_assets_df = df_sorted[~df_sorted['Liquidez_Diaria']]
+    term_assets = term_assets_df.groupby('Ano_Vencimento').head(top_n)
+    
+    analysis_result = pd.concat([daily_assets, term_assets]).sort_values(
+        by=['Liquidez_Diaria', 'Ano_Vencimento', 'Taxa'], 
+        ascending=[False, True, False]
     )
     return analysis_result

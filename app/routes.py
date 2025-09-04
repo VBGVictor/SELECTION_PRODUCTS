@@ -1,100 +1,126 @@
 from flask import Blueprint, render_template, make_response, request, redirect, url_for, Response, flash
 from .data_processor import process_data
 from .analysis import find_best_assets
-from .pdf_generator import create_pdf_report # Removida a importação do relatório detalhado
+from .pdf_generator import create_pdf_report
 import os
 import io
 import pandas as pd
-import json
 
 main_bp = Blueprint('main', __name__)
 
-def get_base_path():
-    return os.path.dirname(os.path.abspath(__file__))
+# --- Nova Lógica de Gerenciamento de Dados ---
+_cached_data = {} # Dicionário para armazenar DataFrames separados, chaveado por filename
 
-def get_project_root():
-    return os.path.dirname(get_base_path())
-
-# --- Gestão de Cache ---
-_cached_data = None
-
-def get_data_path(filename='credito bancario.xlsx'):
-    return os.path.join(get_project_root(), 'data', filename)
+def get_data_dir():
+    return os.path.join(os.path.dirname(os.path.dirname(__file__)), 'data')
 
 def clear_caches():
     global _cached_data
-    _cached_data = None
+    _cached_data = {}
+    print("INFO: Cache de dados limpo.")
 
-def get_processed_data():
+def get_report_data(filename):
+    """Carrega e processa um único arquivo de relatório, usando o cache."""
     global _cached_data
-    if _cached_data is None:
-        try:
-            _cached_data = process_data(get_data_path())
-        except FileNotFoundError:
-            print("WARN: Arquivo 'credito bancario.xlsx' não encontrado.")
-            return pd.DataFrame()
-        except ValueError as e:
-            # Propaga o erro de arquivo inválido
-            raise e
-    return _cached_data
+    if filename in _cached_data:
+        return _cached_data[filename]
 
+    file_path = os.path.join(get_data_dir(), filename)
+    if os.path.exists(file_path):
+        print(f"INFO: Processando o arquivo do zero: {filename}")
+        df = process_data(file_path)
+        _cached_data[filename] = df
+        return df
+    return pd.DataFrame()
+
+def get_available_reports():
+    """Retorna uma lista de arquivos .xlsx na pasta de dados."""
+    data_dir = get_data_dir()
+    if os.path.exists(data_dir):
+        return sorted([f for f in os.listdir(data_dir) if f.endswith('.xlsx')])
+    return []
 
 @main_bp.route('/', methods=['GET'])
 def index():
     try:
-        df = get_processed_data()
-        if df.empty:
-            return render_template('index.html', error="Nenhum dado processável foi encontrado. Por favor, carregue um novo arquivo de dados.")
+        available_reports = get_available_reports()
+        active_report = request.args.get('report')
 
-        anos = sorted(df[~df['Liquidez_Diaria']]['Ano_Vencimento'].unique())
-        tipos_produto = sorted(df['Tipo_Produto_Base'].unique())
-        tipos_taxa = sorted(df['Tipo_Taxa'].unique())
-        emissores = sorted(df[df['Emissor'] != 'N/A']['Emissor'].unique())
+        if not active_report and available_reports:
+            active_report = available_reports[0]
         
-        return render_template('index.html', anos=anos, tipos_produto=tipos_produto, tipos_taxa=tipos_taxa, emissores=emissores)
-    except ValueError as e:
-        return render_template('index.html', error=str(e))
+        df = pd.DataFrame()
+        filter_options = {}
+
+        if active_report:
+            df = get_report_data(active_report)
+            if not df.empty:
+                filter_options = {
+                    "anos": sorted(df[~df['Liquidez_Diaria']]['Ano_Vencimento'].unique()),
+                    "tipos_produto": sorted(df['Tipo_Produto_Base'].unique()),
+                    "tipos_taxa": sorted(df['Tipo_Taxa'].unique()),
+                    "emissores": sorted(df[df['Emissor'] != 'N/A']['Emissor'].unique()),
+                    "tipos_ir": sorted(df['IR'].unique())
+                }
+        
+        if df.empty and active_report:
+             flash(f'O relatório "{active_report}" não pôde ser processado ou não contém dados válidos. Verifique o arquivo.', 'error')
+
+        return render_template('index.html', 
+                               available_reports=available_reports,
+                               active_report=active_report,
+                               **filter_options)
     except Exception as e:
-        return render_template('index.html', error=f"Erro crítico ao carregar a página: {e}")
+        return render_template('index.html', error=f"Erro crítico ao carregar a página: {e}", available_reports=get_available_reports())
 
 
-@main_bp.route('/update-data', methods=['POST'])
-def update_data():
+@main_bp.route('/add-data', methods=['POST'])
+def add_data():
     if 'new_data_file' not in request.files or request.files['new_data_file'].filename == '':
         flash('Nenhum arquivo selecionado.', 'error')
         return redirect(url_for('main.index'))
-
     file = request.files['new_data_file']
     if file and file.filename.endswith('.xlsx'):
         try:
-            data_dir = os.path.join(get_project_root(), 'data')
+            data_dir = get_data_dir()
             os.makedirs(data_dir, exist_ok=True)
-            
-            file_path = get_data_path()
+            file_path = os.path.join(data_dir, file.filename)
             file.save(file_path)
             clear_caches()
-            
-            # **SCRAPING DESATIVADO**
-            # A chamada ao `run_scraping_service` foi removida.
-            
-            flash('Arquivo de produtos atualizado com sucesso!', 'success')
-        except ValueError as e:
-            flash(f'Erro ao processar o arquivo: {e}', 'error')
+            flash(f'Relatório "{file.filename}" foi salvo/atualizado com sucesso!', 'success')
+            return redirect(url_for('main.index', report=file.filename))
         except Exception as e:
-            flash(f'Ocorreu um erro inesperado ao salvar o arquivo: {e}', 'error')
+            flash(f'Ocorreu um erro ao salvar o arquivo: {e}', 'error')
     else:
         flash('Formato de arquivo inválido. Por favor, envie um arquivo .xlsx.', 'error')
-
     return redirect(url_for('main.index'))
 
+@main_bp.route('/clear-data', methods=['POST'])
+def clear_data():
+    try:
+        data_dir = get_data_dir()
+        if os.path.exists(data_dir):
+            for filename in os.listdir(data_dir):
+                if filename.endswith('.xlsx'):
+                    os.remove(os.path.join(data_dir, filename))
+            clear_caches()
+            flash('Todos os relatórios foram removidos com sucesso.', 'success')
+        else:
+            flash('A pasta de dados não existe.', 'info')
+    except Exception as e:
+        flash(f'Ocorreu um erro ao limpar os dados: {e}', 'error')
+    return redirect(url_for('main.index'))
 
 @main_bp.route('/process-filters', methods=['POST'])
 def process_filters():
+    active_report = request.form.get('active_report')
     form_data = {
+        'report': active_report,
         'ano': request.form.getlist('anos'),
         'produto': request.form.getlist('produtos'),
         'taxa': request.form.getlist('taxas'),
         'emissor': request.form.getlist('emissores'),
+        'ir': request.form.getlist('tipos_ir'),
         'report_type': request.form.get('report_type'),
         'liquidez_diaria': request.form.get('liquidez_diaria', 'off'),
     }
@@ -106,14 +132,14 @@ def filter_dataframe(df, args):
     produtos = args.getlist('produto')
     taxas = args.getlist('taxa')
     emissores = args.getlist('emissor')
+    tipos_ir = args.getlist('ir')
     liquidez_diaria = args.get('liquidez_diaria') == 'on'
-    
+    if tipos_ir: df_filtrado = df_filtrado[df_filtrado['IR'].isin(tipos_ir)]
     if liquidez_diaria:
         df_filtrado = df_filtrado[df_filtrado['Liquidez_Diaria'] == True]
     else:
         df_filtrado = df_filtrado[df_filtrado['Liquidez_Diaria'] == False]
         if anos: df_filtrado = df_filtrado[df_filtrado['Ano_Vencimento'].isin(anos)]
-    
     if produtos: df_filtrado = df_filtrado[df_filtrado['Tipo_Produto_Base'].isin(produtos)]
     if taxas: df_filtrado = df_filtrado[df_filtrado['Tipo_Taxa'].isin(taxas)]
     if emissores: df_filtrado = df_filtrado[df_filtrado['Emissor'].isin(emissores)]
@@ -122,18 +148,20 @@ def filter_dataframe(df, args):
 @main_bp.route('/results', methods=['GET'])
 def show_results():
     try:
-        df = get_processed_data()
+        active_report = request.args.get('report')
+        if not active_report:
+            return "<h1>Erro: Relatório não especificado.</h1><p>Por favor, volte à página inicial e selecione um relatório.</p>"
+        df = get_report_data(active_report)
+        if df.empty:
+            return f"<h1>Erro ao processar o relatório '{active_report}'.</h1><p>Por favor, verifique o arquivo e tente carregá-lo novamente.</p>"
         df_filtrado = filter_dataframe(df, request.args)
-        
         report_type = request.args.get('report_type')
         is_advisor_report = (report_type == 'assessor')
         top_n = 8 if is_advisor_report else 5
         analysis_result = find_best_assets(df_filtrado, top_n=top_n)
-
         liquidez_imediata_assets = analysis_result[analysis_result['Sem_Carencia'] == True]
         liquidez_diaria_assets = analysis_result[(analysis_result['Liquidez_Diaria'] == True) & (analysis_result['Sem_Carencia'] == False)]
         prazo_assets = analysis_result[analysis_result['Liquidez_Diaria'] == False]
-
         return render_template('results.html', 
                                liquidez_imediata_assets=liquidez_imediata_assets,
                                liquidez_diaria_assets=liquidez_diaria_assets,
@@ -143,22 +171,21 @@ def show_results():
     except Exception as e:
         return f"<h1>Ocorreu um erro ao gerar a visualização:</h1><p>{str(e)}</p>", 500
 
-
 @main_bp.route('/download/<file_format>', methods=['GET'])
 def download_file(file_format):
     try:
-        df = get_processed_data()
+        active_report = request.args.get('report')
+        if not active_report:
+            return "Erro: Relatório não especificado.", 400
+        df = get_report_data(active_report)
         df_filtrado = filter_dataframe(df, request.args)
-        
         report_type = request.args.get('report_type')
         is_advisor_report = (report_type == 'assessor')
         top_n = 8 if is_advisor_report else 5
         analysis_result = find_best_assets(df_filtrado, top_n=top_n)
-
         if analysis_result.empty: return "Nenhum dado encontrado.", 404
-
         if file_format == 'excel' and is_advisor_report:
-            cols_to_keep = ['Produto', 'Emissor_Display', 'Vencimento', 'Taxa_str', 'Aplicacao_Minima', 'Roa']
+            cols_to_keep = ['Produto', 'Emissor_Display', 'Vencimento', 'Taxa_str', 'IR', 'Aplicacao_Minima', 'Roa']
             df_excel = analysis_result[cols_to_keep].copy()
             df_excel.rename(columns={'Taxa_str': 'Taxa', 'Aplicacao_Minima': 'Aplicação Mínima', 'Emissor_Display': 'Emissor'}, inplace=True)
             df_excel['Vencimento'] = df_excel['Vencimento'].dt.strftime('%d/%m/%Y')
@@ -167,15 +194,11 @@ def download_file(file_format):
             with pd.ExcelWriter(output, engine='openpyxl') as writer: df_excel.to_excel(writer, index=False, sheet_name='Relatorio')
             output.seek(0)
             return Response(output, mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", headers={"Content-Disposition": "attachment; filename=relatorio_assessores.xlsx"})
-        
         else:
             base_path = get_base_path()
             logo_path = os.path.join(base_path, 'static', 'logo.png')
-            
-            # Lógica do relatório detalhado foi removida
             pdf_bytes = create_pdf_report(analysis_result, include_roa=is_advisor_report, logo_path=logo_path)
             filename = "relatorio_assessores.pdf" if is_advisor_report else "relatorio_clientes.pdf"
-
             response = make_response(pdf_bytes)
             response.headers['Content-Type'] = 'application/pdf'
             response.headers['Content-Disposition'] = f'attachment; filename={filename}'
