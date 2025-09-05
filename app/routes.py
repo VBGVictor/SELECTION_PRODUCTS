@@ -222,3 +222,51 @@ def download_file(file_format):
             return response
     except Exception as e:
         return f"<h1>Ocorreu um erro ao gerar o arquivo:</h1><p>{str(e)}</p>", 500
+    
+@main_bp.route('/download_all/<report_type>', methods=['GET'])
+def download_all(report_type):
+    try:
+        available_reports = get_available_reports()
+        if not available_reports:
+            flash('Nenhum relatório disponível para gerar o consolidado.', 'error')
+            return redirect(url_for('main.index'))
+
+        all_dfs = []
+        for report_file in available_reports:
+            df = get_report_data(report_file)
+            if not df.empty:
+                all_dfs.append(df)
+
+        if not all_dfs:
+            flash('Nenhum dado processável encontrado em todos os relatórios.', 'error')
+            return redirect(url_for('main.index'))
+
+        consolidated_df = pd.concat(all_dfs, ignore_index=True)
+        consolidated_df.drop_duplicates(inplace=True)
+
+        is_advisor_report = (report_type == 'assessor')
+        
+        top_n = 8 if is_advisor_report else 5
+        
+        # A análise é feita sobre todos os ativos de todos os relatórios
+        analysis_result = find_best_assets(consolidated_df, top_n=top_n)
+
+        if analysis_result.empty:
+            flash('Nenhum ativo encontrado para o relatório consolidado.', 'info')
+            return redirect(url_for('main.index'))
+
+        # Geração do PDF
+        base_path = get_base_path()
+        logo_path = os.path.join(base_path, 'static', 'logo.png')
+        pdf_bytes = create_pdf_report(analysis_result, include_roa=is_advisor_report, logo_path=logo_path)
+        
+        filename = f"relatorio_consolidado_{report_type}.pdf"
+        
+        response = make_response(pdf_bytes)
+        response.headers['Content-Type'] = 'application/pdf'
+        response.headers['Content-Disposition'] = f'attachment; filename={filename}'
+        return response
+
+    except Exception as e:
+        flash(f'Ocorreu um erro ao gerar o relatório consolidado: {e}', 'error')
+        return redirect(url_for('main.index'))
