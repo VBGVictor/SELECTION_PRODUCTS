@@ -48,7 +48,8 @@
                             {% for row in liquidez_imediata_assets.itertuples() %}
                             <tr>
                                 <td>{{ row.Produto }}</td><td>{{ row.Emissor_Display }}</td><td>{{ row.Vencimento.strftime('%d/%m/%Y') }}</td>
-                                <td>{{ row.Taxa_str }}</td><td>{{ row.IR }}</td><td>R$ {{ "%.2f"|format(row.Aplicacao_Minima) if row.Aplicacao_Minima == row.Aplicacao_Minima else "" }}</td>
+                                <td>{{ row.Taxa_str }}</td><td>{{ row.IR }}</td>
+                                <td>R$ {{ "{:,.2f}".format(row.Aplicacao_Minima).replace(",", "X").replace(".", ",").replace("X", ".") if row.Aplicacao_Minima == row.Aplicacao_Minima else "" }}</td>
                                 {% if is_advisor %}<td>{{ "%.2f%%"|format(row.Roa * 100) if row.Roa == row.Roa else "" }}</td>{% endif %}
                             </tr>
                             {% endfor %}
@@ -64,7 +65,8 @@
                             {% for row in liquidez_diaria_assets.itertuples() %}
                             <tr>
                                 <td>{{ row.Produto }}</td><td>{{ row.Emissor_Display }}</td><td>{{ row.Vencimento.strftime('%d/%m/%Y') }}</td>
-                                <td>{{ row.Taxa_str }}</td><td>{{ row.IR }}</td><td>R$ {{ "%.2f"|format(row.Aplicacao_Minima) if row.Aplicacao_Minima == row.Aplicacao_Minima else "" }}</td>
+                                <td>{{ row.Taxa_str }}</td><td>{{ row.IR }}</td>
+                                <td>R$ {{ "{:,.2f}".format(row.Aplicacao_Minima).replace(",", "X").replace(".", ",").replace("X", ".") if row.Aplicacao_Minima == row.Aplicacao_Minima else "" }}</td>
                                 {% if is_advisor %}<td>{{ "%.2f%%"|format(row.Roa * 100) if row.Roa == row.Roa else "" }}</td>{% endif %}
                             </tr>
                             {% endfor %}
@@ -81,7 +83,8 @@
                             {% for row in group.itertuples() %}
                             <tr>
                                 <td>{{ row.Produto }}</td><td>{{ row.Emissor_Display }}</td><td>{{ row.Vencimento.strftime('%d/%m/%Y') }}</td>
-                                <td>{{ row.Taxa_str }}</td><td>{{ row.IR }}</td><td>R$ {{ "%.2f"|format(row.Aplicacao_Minima) if row.Aplicacao_Minima == row.Aplicacao_Minima else "" }}</td>
+                                <td>{{ row.Taxa_str }}</td><td>{{ row.IR }}</td>
+                                <td>R$ {{ "{:,.2f}".format(row.Aplicacao_Minima).replace(",", "X").replace(".", ",").replace("X", ".") if row.Aplicacao_Minima == row.Aplicacao_Minima else "" }}</td>
                                 {% if is_advisor %}<td>{{ "%.2f%%"|format(row.Roa * 100) if row.Roa == row.Roa else "" }}</td>{% endif %}
                             </tr>
                             {% endfor %}

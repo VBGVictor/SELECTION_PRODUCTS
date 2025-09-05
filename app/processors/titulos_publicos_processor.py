@@ -1,61 +1,13 @@
 import pandas as pd
 import re
 
-def find_and_align_data(df):
-    """
-    Implementa a lógica de "copiar, deletar, alinhar e colar de volta" para
-    corrigir o alinhamento dos dados.
-    """
-    possible_headers = ['produto', 'vencimento', 'rentabilidade anual', 'preço unitário']
-    header_row_index = None
-
-    # Etapa 1: Encontrar a linha do cabeçalho
-    for r in range(min(10, len(df))):
-        row_content_str = ' '.join(str(c) for c in df.iloc[r].values if pd.notna(c)).lower()
-        if sum(h in row_content_str for h in possible_headers) >= 2:
-            header_row_index = r
-            break
-    
-    if header_row_index is None:
-        raise ValueError("Linha do cabeçalho para Títulos Públicos não encontrada.")
-
-    # Etapa 2: Copiar e guardar o cabeçalho
-    header_values = df.iloc[header_row_index].dropna().tolist()
-
-    # Etapa 3: Isolar os dados (tudo abaixo do cabeçalho)
-    df_data_part = df.iloc[header_row_index + 1:].copy()
-
-    # Etapa 4: Encontrar a primeira coluna que contém dados
-    data_col_start = 0
-    for c in range(min(10, len(df_data_part.columns))):
-        if not df_data_part.iloc[:, c].isna().all():
-            data_col_start = c
-            break
-            
-    # Etapa 5: Alinhar os dados (remover colunas vazias à esquerda)
-    df_aligned_data = df_data_part.iloc[:, data_col_start:]
-    
-    # Etapa 6: Colar o cabeçalho de volta
-    # Garante que o número de colunas do cabeçalho corresponda ao dos dados
-    num_data_cols = df_aligned_data.shape[1]
-    df_final = pd.DataFrame(df_aligned_data.values, columns=header_values[:num_data_cols])
-    
-    return df_final
-
-
 def process(df):
     """
     Processador especializado para relatórios de Títulos Públicos.
+    O DataFrame já deve vir alinhado pelo data_processor.
     """
     print("INFO: Usando o processador de Títulos Públicos.")
     
-    try:
-        df_aligned = find_and_align_data(df)
-    except ValueError as e:
-        # Passa o erro para o data_processor, que irá parar o processamento deste arquivo.
-        raise ValueError(f"Falha ao alinhar dados de Títulos Públicos: {e}")
-
-    df = df_aligned.copy()
     df.dropna(how='all', inplace=True)
 
     column_map = {

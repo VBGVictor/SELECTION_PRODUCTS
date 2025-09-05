@@ -46,6 +46,47 @@ def find_data_start_and_keywords(df):
     final_keywords = list(set(data_keywords + header_keywords))
     return header_row_index, final_keywords
 
+def find_and_align_data_for_public_bonds(df):
+    """
+    Implementa a lógica de "copiar, deletar, alinhar e colar de volta" para
+    corrigir o alinhamento dos dados de Títulos Públicos.
+    """
+    possible_headers = ['produto', 'vencimento', 'rentabilidade anual', 'preço unitário']
+    header_row_index = None
+
+    # Etapa 1: Encontrar a linha do cabeçalho
+    for r in range(min(10, len(df))):
+        row_content_str = ' '.join(str(c) for c in df.iloc[r].values if pd.notna(c)).lower()
+        if sum(h in row_content_str for h in possible_headers) >= 2:
+            header_row_index = r
+            break
+    
+    if header_row_index is None:
+        raise ValueError("Linha do cabeçalho para Títulos Públicos não encontrada.")
+
+    # Etapa 2: Copiar e guardar o cabeçalho
+    header_values = df.iloc[header_row_index].dropna().tolist()
+
+    # Etapa 3: Isolar os dados (tudo abaixo do cabeçalho)
+    df_data_part = df.iloc[header_row_index + 1:].copy()
+
+    # Etapa 4: Encontrar a primeira coluna que contém dados
+    data_col_start = 0
+    for c in range(min(10, len(df_data_part.columns))):
+        if not df_data_part.iloc[:, c].isna().all():
+            data_col_start = c
+            break
+            
+    # Etapa 5: Alinhar os dados (remover colunas vazias à esquerda)
+    df_aligned_data = df_data_part.iloc[:, data_col_start:]
+    
+    # Etapa 6: Colar o cabeçalho de volta
+    # Garante que o número de colunas do cabeçalho corresponda ao dos dados
+    num_data_cols = df_aligned_data.shape[1]
+    df_final = pd.DataFrame(df_aligned_data.values, columns=header_values[:num_data_cols])
+    
+    return df_final
+
 def process_data(file_path: str):
     """
     Gerenciador principal com lógica de seleção hierárquica e forçada.
@@ -58,7 +99,13 @@ def process_data(file_path: str):
             print(f"WARN: Cabeçalho não identificado em {os.path.basename(file_path)}. Pulando.")
             return pd.DataFrame()
             
-        df_raw = pd.read_excel(file_path, header=header_row_index, dtype=str)
+        # **NOVA LÓGICA PARA TÍTULOS PÚBLICOS**
+        if any(k in keywords for k in ['tesouro', 'lft', 'ltn', 'ntn', 'preçounitário']):
+             print(f"INFO: Arquivo '{os.path.basename(file_path)}' identificado como Títulos Públicos. Realizando alinhamento especial.")
+             df_raw = find_and_align_data_for_public_bonds(df_temp)
+        else:
+            df_raw = pd.read_excel(file_path, header=header_row_index, dtype=str)
+
         df_raw.dropna(axis=1, how='all', inplace=True)
         
         print(f"INFO: Arquivo '{os.path.basename(file_path)}' lido. Palavras-chave de identificação: {keywords}")
@@ -108,9 +155,17 @@ def process_data(file_path: str):
     df['Tipo_Taxa'] = df['Taxa_str'].apply(lambda s: 'Pós-fixado CDI' if 'cdi' in str(s).lower() else 'Híbrido IPCA+' if 'ipca' in str(s).lower() else 'Pré-fixado' if '% a.a.' in str(s).lower() else 'Outros')
     
     def parse_money(val):
-        s = str(val).replace("R$", "").replace(".", "").replace(",", ".").strip()
-        try: return float(s)
-        except: return None
+        s = str(val).strip()
+        if not s or s.lower() == 'nan':
+            return None
+        s = s.replace("R$", "").strip()
+        # Se contém vírgula, assume que é o padrão brasileiro (1.000,00)
+        if ',' in s:
+            s = s.replace(".", "").replace(",", ".")
+        try:
+            return float(s)
+        except (ValueError, TypeError):
+            return None
     df["Aplicacao_Minima"] = df["Aplicacao_Minima"].apply(parse_money)
     
     def parse_percent(val):
