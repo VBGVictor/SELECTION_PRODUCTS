@@ -8,11 +8,13 @@ import pandas as pd
 
 main_bp = Blueprint('main', __name__)
 
-# --- Nova Lógica de Gerenciamento de Dados ---
-_cached_data = {} # Dicionário para armazenar DataFrames separados, chaveado por filename
+_cached_data = {} 
 
 def get_data_dir():
     return os.path.join(os.path.dirname(os.path.dirname(__file__)), 'data')
+
+def get_base_path():
+    return os.path.dirname(os.path.abspath(__file__))
 
 def clear_caches():
     global _cached_data
@@ -20,7 +22,6 @@ def clear_caches():
     print("INFO: Cache de dados limpo.")
 
 def get_report_data(filename):
-    """Carrega e processa um único arquivo de relatório, usando o cache."""
     global _cached_data
     if filename in _cached_data:
         return _cached_data[filename]
@@ -34,7 +35,6 @@ def get_report_data(filename):
     return pd.DataFrame()
 
 def get_available_reports():
-    """Retorna uma lista de arquivos .xlsx na pasta de dados."""
     data_dir = get_data_dir()
     if os.path.exists(data_dir):
         return sorted([f for f in os.listdir(data_dir) if f.endswith('.xlsx')])
@@ -151,17 +151,26 @@ def show_results():
         active_report = request.args.get('report')
         if not active_report:
             return "<h1>Erro: Relatório não especificado.</h1><p>Por favor, volte à página inicial e selecione um relatório.</p>"
+        
         df = get_report_data(active_report)
         if df.empty:
             return f"<h1>Erro ao processar o relatório '{active_report}'.</h1><p>Por favor, verifique o arquivo e tente carregá-lo novamente.</p>"
+        
         df_filtrado = filter_dataframe(df, request.args)
         report_type = request.args.get('report_type')
         is_advisor_report = (report_type == 'assessor')
+        
+        # **CORREÇÃO: Se o relatório for o de Compromissadas, força o modo "cliente" (sem ROA)**
+        if active_report and 'compromissada' in active_report.lower():
+            is_advisor_report = False
+
         top_n = 8 if is_advisor_report else 5
         analysis_result = find_best_assets(df_filtrado, top_n=top_n)
+        
         liquidez_imediata_assets = analysis_result[analysis_result['Sem_Carencia'] == True]
         liquidez_diaria_assets = analysis_result[(analysis_result['Liquidez_Diaria'] == True) & (analysis_result['Sem_Carencia'] == False)]
         prazo_assets = analysis_result[analysis_result['Liquidez_Diaria'] == False]
+        
         return render_template('results.html', 
                                liquidez_imediata_assets=liquidez_imediata_assets,
                                liquidez_diaria_assets=liquidez_diaria_assets,
@@ -177,13 +186,21 @@ def download_file(file_format):
         active_report = request.args.get('report')
         if not active_report:
             return "Erro: Relatório não especificado.", 400
+            
         df = get_report_data(active_report)
         df_filtrado = filter_dataframe(df, request.args)
         report_type = request.args.get('report_type')
         is_advisor_report = (report_type == 'assessor')
+
+        # **CORREÇÃO: Se o relatório for o de Compromissadas, força o modo "cliente" (sem ROA)**
+        if active_report and 'compromissada' in active_report.lower():
+            is_advisor_report = False
+
         top_n = 8 if is_advisor_report else 5
         analysis_result = find_best_assets(df_filtrado, top_n=top_n)
+        
         if analysis_result.empty: return "Nenhum dado encontrado.", 404
+            
         if file_format == 'excel' and is_advisor_report:
             cols_to_keep = ['Produto', 'Emissor_Display', 'Vencimento', 'Taxa_str', 'IR', 'Aplicacao_Minima', 'Roa']
             df_excel = analysis_result[cols_to_keep].copy()

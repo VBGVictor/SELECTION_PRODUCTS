@@ -5,38 +5,39 @@ def process(df):
     """
     Processador especializado para relatórios de Crédito Privado (CRA, CRI, etc.).
     """
+    # Verificação de conteúdo para garantir que é o processador certo.
+    if df.to_string().upper().count('CRA') + df.to_string().upper().count('CRI') == 0:
+         raise ValueError("Arquivo não contém 'CRA' ou 'CRI'.")
+
+    print("INFO: Usando o processador de Crédito Privado.")
+    df.dropna(how='all', inplace=True)
+    
+    # **CORREÇÃO: As chaves agora são o nome exato do cabeçalho em minúsculas.**
     column_map = {
-        'ativo': 'produto', 'produto': 'produto',
+        'produto e ativo': 'produto', # Corresponde a "Produto e Ativo"
         'vencimento': 'vencimento',
-        'rentabilidadeanual': 'taxa', 'taxa': 'taxa',
+        'rentabilidade anual': 'taxa',    # Corresponde a "Rentabilidade Anual"
         'ir': 'ir',
-        'aplicaçãomínima': 'aplicaominima',
+        'aplicação mínima': 'aplicaominima', # Corresponde a "Aplicação Mínima"
         'roa': 'roa'
     }
 
-    new_columns, used_standard_names = {}, set()
+    new_columns = {}
     for col in df.columns:
         if not col or pd.isna(col): continue
-        normalized_col = re.sub(r'[^a-z0-9]', '', str(col).lower())
-        for keyword, standard_name in column_map.items():
-            if keyword in normalized_col and standard_name not in used_standard_names:
-                # **INÍCIO DA CORREÇÃO**
-                new_columns[col] = standard_name
-                used_standard_names.add(standard_name)
-                # **FIM DA CORREÇÃO**
-                break
+        # Lógica simplificada: apenas converte para minúsculas e procura a correspondência exata.
+        clean_col = str(col).lower().strip()
+        if clean_col in column_map:
+            new_columns[col] = column_map[clean_col]
+            
     df.rename(columns=new_columns, inplace=True)
-
-    if 'produto' not in df.columns:
-        raise ValueError("Este não parece ser um relatório de Crédito Privado.")
-
-    print("INFO: Usando o processador de Crédito Privado.")
 
     records = []
     for index, row in df.iterrows():
         row_data = row.to_dict()
         produto_completo = row_data.get('produto')
-        if pd.notna(produto_completo) and produto_completo.strip() != '':
+        
+        if pd.notna(produto_completo) and produto_completo.strip() != '' and pd.notna(row_data.get('taxa')):
             records.append({
                 "Produto_Completo": produto_completo,
                 "Prazo_str": "",

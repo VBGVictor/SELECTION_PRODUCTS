@@ -5,31 +5,33 @@ def process(df):
     """
     Processador especializado para relatórios de Crédito Bancário.
     """
-    column_map = {'produto': 'produto', 'taxa': 'taxa', 'prazo': 'prazovencimento', 'aplicaomnima': 'aplicaominima', 'roa': 'roa'}
-    new_columns, used_standard_names = {}, set()
-    for col in df.columns:
-        if not col or pd.isna(col): continue
-        normalized_col = re.sub(r'[^a-z0-9]', '', str(col).lower())
-        for keyword, standard_name in column_map.items():
-            if keyword in normalized_col and standard_name not in used_standard_names:
-                new_columns[col] = standard_name
-                used_standard_names.add(standard_name)
-                break
-    df.rename(columns=new_columns, inplace=True)
-
-    if 'produto' not in df.columns:
+    # **CORREÇÃO: Lógica de autoidentificação específica.**
+    # Ele só se identifica se encontrar produtos bancários e não for de outro tipo.
+    content = df.to_string().upper()
+    is_bancario_candidate = 'LCA' in content or 'LCI' in content or 'CDB' in content or 'LF' in content
+    
+    if not (is_bancario_candidate):
         raise ValueError("Este não parece ser um relatório de Crédito Bancário.")
 
     print("INFO: Usando o processador de Crédito Bancário.")
     
+    column_map = {'produto': 'produto', 'taxa': 'taxa', 'prazo/vencimento': 'prazovencimento', 'aplicação mínima': 'aplicaominima', 'roa': 'roa'}
+
+    new_columns = {}
+    for col in df.columns:
+        if not col or pd.isna(col): continue
+        clean_col = str(col).lower().strip()
+        if clean_col in column_map:
+            new_columns[col] = column_map[clean_col]
+
+    df.rename(columns=new_columns, inplace=True)
+
+    if 'produto' not in df.columns:
+        raise ValueError("Coluna 'produto' não encontrada após renomeação.")
+
     records = []
-    # **INÍCIO DA CORREÇÃO**
-    # 1. Pré-limpeza: Remove todas as linhas que são completamente vazias
-    df_cleaned = df.dropna(how='all').reset_index(drop=True)
-    
-    # 2. Converte para uma estrutura mais fácil de iterar
+    df_cleaned = df.reset_index(drop=True)
     data_list = df_cleaned.to_dict('records')
-    # **FIM DA CORREÇÃO**
     
     for i in range(len(data_list) - 1):
         current_row = data_list[i]
@@ -37,7 +39,7 @@ def process(df):
         
         if pd.notna(produto_completo) and produto_completo.strip() != '':
             next_row = data_list[i+1]
-            vencimento = next((str(cell) for cell in next_row.values() if re.match(r'(\d{4}-\d{2}-\d{2})', str(cell))), None)
+            vencimento = next((str(cell).split(' ')[0] for cell in next_row.values() if isinstance(cell, str) and re.match(r'^\d{4}-\d{2}-\d{2}', cell)), None)
 
             if vencimento:
                 records.append({

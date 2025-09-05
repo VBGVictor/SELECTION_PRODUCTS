@@ -5,32 +5,29 @@ def process(df):
     """
     Processador especializado para relatórios de Compromissadas.
     """
+    if df.to_string().upper().count('COMPROMISSADA') == 0:
+         raise ValueError("Não é um relatório de Compromissadas.")
+         
+    print("INFO: Usando o processador de Compromissadas.")
+    df.dropna(how='all', inplace=True)
+    
+    # **CORREÇÃO: As chaves agora são o nome exato do cabeçalho em minúsculas.**
     column_map = {
         'produto': 'produto',
         'vencimento': 'vencimento',
-        'rentabilidadeanual': 'taxa',
+        'rentabilidade anual': 'taxa',
         'ir': 'ir',
-        'aplicaçãomínima': 'aplicaominima'
+        'aplicação mínima': 'aplicaominima'
     }
 
-    new_columns, used_standard_names = {}, set()
+    new_columns = {}
     for col in df.columns:
         if not col or pd.isna(col): continue
-        normalized_col = str(col).lower()
-        normalized_col = re.sub(r'[^a-z0-9]', '', normalized_col)
-        for keyword, standard_name in column_map.items():
-            if keyword in normalized_col and standard_name not in used_standard_names:
-                # **INÍCIO DA CORREÇÃO**
-                new_columns[col] = standard_name
-                used_standard_names.add(standard_name)
-                # **FIM DA CORREÇÃO**
-                break
+        clean_col = str(col).lower().strip()
+        if clean_col in column_map:
+            new_columns[col] = column_map[clean_col]
+            
     df.rename(columns=new_columns, inplace=True)
-
-    if 'produto' not in df.columns or not df['produto'].str.contains('COMPROMISSADA', case=False).any():
-        raise ValueError("Este não parece ser um relatório de Compromissadas.")
-
-    print("INFO: Usando o processador de Compromissadas.")
 
     records = []
     for index, row in df.iterrows():
